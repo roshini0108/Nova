@@ -7,7 +7,7 @@ It features a sleek UI, real-time streaming responses, markdown rendering, speec
 
 ## 🌐 Live Demo
 
-https://gemini-chatbot-ugzt.onrender.com
+[https://gemini-chatbot-ugzt.onrender.com](https://nova-1-ztpp.onrender.com/)
 
 ---
 
