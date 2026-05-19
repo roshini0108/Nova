@@ -1,8 +1,13 @@
 require('dotenv').config();
 const express = require('express');
+const cors = require('cors');
 const path = require('path');
-
 const app = express();
+
+app.use(cors({
+    origin: 'https://nova-4v9y.onrender.com'
+}));
+
 const PORT = process.env.PORT || 5000;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
@@ -130,13 +135,13 @@ app.post('/api/chat/stream', async (req, res) => {
 
                 for (const payload of dataLines) {
                     if (payload === '[DONE]') {
-                    sendSse(res, '[DONE]');
-                    res.end();
-                    return;
-                }
-                const parsed = JSON.parse(payload);
+                        sendSse(res, '[DONE]');
+                        res.end();
+                        return;
+                    }
+                    const parsed = JSON.parse(payload);
                     const token = extractText(parsed);
-                if (token) {
+                    if (token) {
                         sendSse(res, { type: 'token', text: token });
                     }
                 }

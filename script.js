@@ -369,7 +369,7 @@ const api = {
             .filter(Boolean);
     },
     async streamChat(messages, callbacks) {
-        const response = await fetch('https://nova-hgai.onrender.com', {
+        const response = await fetch('https://nova-hgai.onrender.com/api/chat/stream', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ messages })
