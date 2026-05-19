@@ -1,10 +1,10 @@
-# Gemini AI Chatbot
+# Nova AI Chatbot
 
-A modern ChatGPT-style AI assistant built with HTML, CSS, vanilla JavaScript, Node.js, Express, and the Gemini API. The app includes streaming responses, markdown rendering, syntax-highlighted code blocks, persistent chat sessions, dark mode, voice input, text-to-speech, and a polished responsive interface.
+A modern Gemini-style AI assistant built with HTML, CSS, vanilla JavaScript, Node.js, Express, and the Gemini API. The app includes streaming responses, markdown rendering, syntax-highlighted code blocks, persistent chat sessions, dark mode, voice input, text-to-speech, and a polished responsive interface.
 
 ## Live Demo
 
-[Open the deployed app](https://courageous-queijadas-a16696.netlify.app/)
+[Open the deployed app](https://gemini-chatbot-ugzt.onrender.com/)
 
 ## Features
 
@@ -24,15 +24,11 @@ A modern ChatGPT-style AI assistant built with HTML, CSS, vanilla JavaScript, No
 
 - HTML5
 - CSS3
-- Vanilla JavaScript
+- JavaScript
 - Node.js
 - Express.js
 - Gemini API
 - Fetch API
-- marked.js
-- DOMPurify
-- Prism.js
-- Web Speech API
 - localStorage
 
 ## Project Structure
@@ -89,47 +85,6 @@ npm start
 http://localhost:5000
 ```
 
-## Environment Variables
-
-| Variable | Description | Example |
-| --- | --- | --- |
-| `GEMINI_API_KEY` | Your Gemini API key. Keep this secret. | `AIza...` |
-| `GEMINI_MODEL` | Gemini model used by the backend. | `gemini-2.5-flash` |
-| `PORT` | Local server port. | `5000` |
-
-## Deployment Notes
-
-The frontend can be hosted on Netlify, but the Gemini API key must stay on a backend. Do not call Gemini directly from browser JavaScript with a public API key.
-
-Recommended deployment setup:
-
-- Host the frontend on Netlify.
-- Host the Express backend on Render, Railway, Fly.io, Vercel serverless functions, or another Node.js host.
-- Set `GEMINI_API_KEY` as a secret environment variable in the backend hosting dashboard.
-- Update the frontend API URL if the backend is hosted separately.
-
-If frontend and backend are deployed separately, change the fetch URL in `script.js` from:
-
-```js
-fetch('/api/chat/stream', ...)
-```
-
-to your backend URL:
-
-```js
-fetch('https://your-backend-domain.com/api/chat/stream', ...)
-```
-
-You may also need to enable CORS on the Express server for your Netlify domain.
-
-## Security Best Practices
-
-- Never commit `.env` to GitHub.
-- Rotate any API key that was previously exposed in frontend code or public files.
-- Restrict API keys where possible in Google Cloud or Google AI Studio.
-- Add rate limiting before public production use.
-- Validate and limit request size on the backend.
-- Consider authentication if the app is shared beyond personal use.
 
 ## Future Improvements
 
@@ -142,6 +97,3 @@ You may also need to enable CORS on the Express server for your Netlify domain.
 - Add image generation or vision support
 - Add rate limiting and usage analytics
 
-## License
-
-This project is open for learning, customization, and personal use.
