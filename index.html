@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#f7f3ee" />
+    <title>Gemini Assistant</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+        rel="stylesheet" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+    <link rel="stylesheet" href="style.css" />
+</head>
+
+<body>
+    <div class="shell" id="shell">
+        <aside class="sidebar" id="sidebar" aria-label="Chat sessions">
+            <div class="sidebar-top">
+                <div class="brand" aria-label="Gemini Assistant">
+                    <span class="brand-mark" aria-hidden="true">G</span>
+                    <span class="brand-text">Gemini Assistant</span>
+                </div>
+                <button class="icon-btn ghost mobile-only" id="closeSidebarBtn" type="button" aria-label="Close sidebar">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+
+            <button class="new-chat-btn" id="newChatBtn" type="button">
+                <span aria-hidden="true">+</span>
+                New chat
+            </button>
+
+            <nav class="session-list" id="sessionList" aria-label="Saved conversations"></nav>
+        </aside>
+
+        <div class="sidebar-backdrop" id="sidebarBackdrop" hidden></div>
+
+        <main class="chat-panel">
+            <header class="topbar">
+                <button class="icon-btn" id="sidebarToggleBtn" type="button" aria-label="Toggle sidebar">
+                    <span aria-hidden="true">&#9776;</span>
+                </button>
+
+                <div class="model-meta">
+                    <p class="eyebrow">Gemini API</p>
+                    <h1 id="activeTitle">New chat</h1>
+                </div>
+
+                <div class="topbar-actions">
+                    <span class="status-pill" id="connectionStatus">
+                        <span></span>
+                        Ready
+                    </span>
+                    <button class="theme-switch" id="themeToggle" type="button" aria-label="Toggle dark mode"
+                        aria-pressed="false">
+                        <span class="sun" aria-hidden="true">&#9728;</span>
+                        <span class="moon" aria-hidden="true">&#9790;</span>
+                    </button>
+                </div>
+            </header>
+
+            <section class="messages" id="messages" aria-live="polite" aria-label="Conversation messages"></section>
+
+            <form class="composer" id="chatForm" autocomplete="off">
+                <div class="composer-inner">
+                    <button class="icon-btn mic-btn" id="micBtn" type="button" aria-label="Start voice input"
+                        title="Voice input">
+                        <span aria-hidden="true">&#127897;</span>
+                    </button>
+                    <textarea id="promptInput" rows="1" placeholder="Message Gemini Assistant..."
+                        aria-label="Message Gemini Assistant"></textarea>
+                    <button class="send-btn" id="sendBtn" type="submit" aria-label="Send message" title="Send">
+                        <span aria-hidden="true">&#10148;</span>
+                    </button>
+                </div>
+                <p class="composer-hint">Enter to send | Shift + Enter for a new line</p>
+            </form>
+        </main>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.2.6/purify.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked@15.0.7/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-css.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-markup.min.js"></script>
+    <script src="script.js"></script>
+</body>
+
+</html>
