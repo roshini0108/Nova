@@ -149,7 +149,7 @@ The app will be available at `http://localhost:5000`.
   status = 200
 ```
 ---
-##DEMO 
+## ✨ DEMO
 <img width="1919" height="991" alt="image" src="https://github.com/user-attachments/assets/24595be1-1456-45d3-a584-5d0545e76869" />
 ---
 
