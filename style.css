@@ -1113,8 +1113,7 @@ textarea::placeholder {
 .message,
 .sidebar,
 .chat-panel,
-.bubble,
-.messages {
+.bubble {
     transform: translateZ(0);
     will-change: transform;
 }

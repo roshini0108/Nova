@@ -54,11 +54,13 @@ async function startChatForUser(user) {
             try {
                 const chatId = await createChat(user.uid);
                 setActiveChat(chatId);
-                subscribeToMessages(chatId);
+                if (!state.isGenerating) {
+                    subscribeToMessages(chatId);
+                }
             } catch (error) {
                 handleFirestoreError(error);
-                renderChats();
-                if (!state.isGenerating) if (!state.isGenerating) {
+                if (!state.isGenerating) {
+                    renderChats();
                     renderMessages();
                 }
             }
@@ -67,16 +69,19 @@ async function startChatForUser(user) {
 
         if (!state.activeChatId || !state.chats.some(chat => chat.id === state.activeChatId)) {
             setActiveChat(state.chats[0].id);
-            subscribeToMessages(state.activeChatId);
+            if (!state.isGenerating) {
+                subscribeToMessages(state.activeChatId);
+            }
         }
 
-        renderChats();
-        setStatus("Ready", false);
+        if (!state.isGenerating) {
+            renderChats();
+            setStatus("Ready", false);
+        }
     }, error => {
         handleFirestoreError(error);
-        renderChats();
-        renderMessages()
         if (!state.isGenerating) {
+            renderChats();
             renderMessages();
         }
         setStatus("Offline", false);
@@ -134,7 +139,8 @@ async function sendPrompt(text) {
         if (!chatId) {
             chatId = await createChat(state.user.uid);
             setActiveChat(chatId);
-            subscribeToMessages(chatId);
+            // Don't call subscribeToMessages here mid-generation;
+            // the chat listener will pick it up after generation ends.
         }
 
         els.promptInput.value = "";
@@ -185,6 +191,9 @@ async function sendPrompt(text) {
         state.isGenerating = false;
         els.sendBtn.disabled = false;
         setStatus("Ready", false);
+        // Now that generation is done, sync the final rendered state
+        renderChats();
+        renderMessages();
         els.promptInput.focus();
     }
 }
@@ -232,6 +241,7 @@ async function regenerate(messageId) {
         state.isGenerating = false;
         els.sendBtn.disabled = false;
         setStatus("Ready", false);
+        renderMessages();
     }
 }
 
