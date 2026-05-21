@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![Nova Chat Banner](https://img.shields.io/badge/Nova%20Chat-AI%20Powered-blueviolet?style=for-the-badge&logo=googlechrome&logoColor=white)
+![Nova Chat Banner](https://img.shields.io/badge/Nova%20Chat-AI%20Powered-blueviolet?style=for-the-badge&logo=googlechrome&logoColor=white)(https://novachat0108.netlify.app/)
 
 
 **A full-stack, real-time AI chatbot platform with Google Authentication, persistent chat history, and streaming responses — inspired by modern conversational AI experiences.**
@@ -47,18 +47,32 @@
 
 ```
 nova-chat/
-├── netlify/
+├── dist/
+│   └── modules/               # Compiled/bundled module outputs
+│       ├── auth.js
+│       ├── chat.js
+│       ├── firestore.js
+│       ├── sessions.js
+│       └── ui.js
+├── modules/                   # Source ES modules
+│   ├── auth.js                # Firebase Authentication logic
+│   ├── chat.js                # Chat message handling & Gemini API calls
+│   ├── firestore.js           # Firestore CRUD & real-time listeners
+│   ├── sessions.js            # Chat session management
+│   └── ui.js                  # UI rendering & DOM interactions
+├── netlify/                   # Netlify serverless functions
 │   └── functions/
-│       └── chat.js            # Serverless function — Gemini API + SSE streaming
-├── public/
-│   ├── index.html             # Main application shell
-│   ├── style.css              # Glassmorphism UI styles
-│   ├── app.js                 # Core frontend logic
-│   ├── auth.js                # Firebase Authentication
-│   └── firestore.js           # Chat history CRUD & real-time listeners
+├── scripts/                   # Build / utility scripts
+├── index.html                 # Main application shell
+├── script.js                  # App entry point
+├── style.css                  # Glassmorphism UI styles
+├── server.js                  # Local Express dev server (port 5000)
+├── firebase.js                # Firebase app initialization
+├── firebase.json              # Firebase project configuration
+├── .firebaserc                # Firebase project alias config
 ├── .env                       # Local environment variables (not committed)
-├── netlify.toml               # Netlify configuration & redirects
-├── package.json
+├── .env.example               # Environment variable template
+├── .gitignore
 └── README.md
 ```
 
@@ -76,7 +90,7 @@ nova-chat/
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/roshini0108/nova-chat.git
+git clone https://github.com/roshini0108/Nova.git
 cd nova-chat
 ```
 
@@ -100,14 +114,19 @@ FIREBASE_MESSAGING_SENDER_ID=your_sender_id
 FIREBASE_APP_ID=your_app_id
 ```
 
-### 4. Run Locally with Netlify Dev
+### 4. Run Locally
 
 ```bash
-npm install -g netlify-cli
-netlify dev
+node server.js
 ```
 
 The app will be available at `http://localhost:5000`.
+
+> To also test Netlify serverless functions locally:
+> ```bash
+> npm install -g netlify-cli
+> netlify dev
+> ```
 
 ---
 
@@ -148,16 +167,6 @@ The app will be available at `http://localhost:5000`.
 - [ ] 🌐 Multi-language support
 - [ ] 📤 Export chat history (PDF / Markdown)
 - [ ] 🤝 Shared/collaborative chat sessions
-
----
-
-## 🙌 Acknowledgements
-
-- [Google Gemini API](https://ai.google.dev/)
-- [Firebase](https://firebase.google.com/)
-- [Netlify](https://www.netlify.com/)
-- [Marked.js](https://marked.js.org/) — Markdown rendering
-- [Highlight.js](https://highlightjs.org/) — Syntax highlighting
 
 ---
 
