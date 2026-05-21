@@ -58,7 +58,9 @@ async function startChatForUser(user) {
             } catch (error) {
                 handleFirestoreError(error);
                 renderChats();
-                renderMessages();
+                if (!state.isGenerating) if (!state.isGenerating) {
+                    renderMessages();
+                }
             }
             return;
         }
@@ -73,7 +75,10 @@ async function startChatForUser(user) {
     }, error => {
         handleFirestoreError(error);
         renderChats();
-        renderMessages();
+        renderMessages()
+        if (!state.isGenerating) {
+            renderMessages();
+        }
         setStatus("Offline", false);
     });
 }
@@ -87,7 +92,9 @@ function subscribeToMessages(chatId) {
 
     state.messageUnsubscribe = loadMessages(state.user.uid, chatId, messages => {
         state.messages = messages;
-        renderMessages();
+        if (!state.isGenerating) {
+            renderMessages();
+        }
     }, error => {
         handleFirestoreError(error);
     });
@@ -163,7 +170,6 @@ async function sendPrompt(text) {
                 }
             }
         });
-
         if (!reply.trim()) throw new Error("Gemini returned an empty response.");
         await pendingSave;
         await updateMessage(state.user.uid, chatId, assistantMessageId, { message: reply });
@@ -172,7 +178,7 @@ async function sendPrompt(text) {
         if (assistantMessageId) {
             await updateMessage(state.user.uid, chatId, assistantMessageId, {
                 message: `**Something went wrong.**\n\n${error.message}`
-            }).catch(() => {});
+            }).catch(() => { });
         }
         handleFirestoreError(error);
     } finally {
@@ -219,7 +225,7 @@ async function regenerate(messageId) {
         if (assistantMessageId) {
             await updateMessage(state.user.uid, state.activeChatId, assistantMessageId, {
                 message: `**Something went wrong.**\n\n${error.message}`
-            }).catch(() => {});
+            }).catch(() => { });
         }
         handleFirestoreError(error);
     } finally {
