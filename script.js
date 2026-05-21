@@ -38,7 +38,7 @@ import {
     upsertStreamingMessage
 } from "./modules/ui.js";
 
-const STREAM_SAVE_INTERVAL = 500;
+const STREAM_SAVE_INTERVAL = 1200; // Save the streaming response to Firestore every 12 seconds
 
 async function startChatForUser(user) {
     stopChatListener();
