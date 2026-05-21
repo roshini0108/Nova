@@ -1110,6 +1110,14 @@ textarea::placeholder {
     }
 }
 
+.stream-pre {
+    all: unset;
+    display: block;
+    white-space: pre-wrap;
+    word-break: break-word;
+    line-height: 1.72;
+}
+
 .message,
 .sidebar,
 .chat-panel,

@@ -196,26 +196,80 @@ export function appendTypingMessage() {
     scrollToBottom();
 }
 
+// Throttle helper — runs fn at most once per `ms` milliseconds,
+// always fires the final call so the last chunk is never dropped.
+function throttle(fn, ms) {
+    let last = 0;
+    let timer = null;
+    return (...args) => {
+        const now = Date.now();
+        const remaining = ms - (now - last);
+        clearTimeout(timer);
+        if (remaining <= 0) {
+            last = now;
+            fn(...args);
+        } else {
+            timer = setTimeout(() => {
+                last = Date.now();
+                fn(...args);
+            }, remaining);
+        }
+    };
+}
+
+// Raw-text streaming: just update a <pre> text node, zero markdown/Prism overhead.
+// scrollToBottom is throttled so layout recalcs happen at most ~12 fps.
+const throttledScroll = throttle(() => scrollToBottom(false), 80);
+
 export function upsertStreamingMessage(entry, content) {
     document.querySelector(".typing-message")?.remove();
+    els.messages.querySelector(".welcome")?.remove();
+
     let message = els.messages.querySelector(`[data-message-id="${entry.id}"]`);
     if (!message) {
-        els.messages.querySelector(".welcome")?.remove();
-        message = createMessage({ ...entry, message: content });
+        // Build the shell once — bubble starts empty, we fill it below.
+        message = document.createElement("article");
+        message.className = "message assistant";
+        message.dataset.messageId = entry.id;
+        message.innerHTML = `
+            <div class="avatar" aria-hidden="true">N</div>
+            <div class="message-body">
+                <div class="message-head">
+                    <span>Nova</span>
+                    <div class="message-actions">
+                        <button class="action-btn copy-message" type="button" title="Copy response" aria-label="Copy response">Copy</button>
+                        <button class="action-btn speak-message" type="button" title="Read aloud" aria-label="Read response aloud">Play</button>
+                        <button class="action-btn regenerate-message" type="button" title="Regenerate" aria-label="Regenerate response">Redo</button>
+                    </div>
+                </div>
+                <div class="bubble streaming"><pre class="stream-pre"></pre></div>
+            </div>
+        `;
         els.messages.appendChild(message);
     }
 
-    const bubble = message.querySelector(".bubble");
-    bubble.classList.add("streaming");
-    bubble.innerHTML = renderMarkdown(content);
-    enhanceCodeBlocks(bubble);
-    Prism.highlightAllUnder(bubble);
-    scrollToBottom();
+    // Update only the text node inside the <pre> — no innerHTML, no markdown, no Prism.
+    const pre = message.querySelector(".stream-pre");
+    if (pre) pre.textContent = content;
+
+    throttledScroll();
 }
 
 export function stopStreamingMessage(messageId) {
     const message = els.messages.querySelector(`[data-message-id="${messageId}"]`);
-    message?.querySelector(".bubble")?.classList.remove("streaming");
+    if (!message) return;
+
+    const bubble = message.querySelector(".bubble");
+    if (!bubble) return;
+
+    // Get the raw text that was streamed (stored in the <pre>)
+    const raw = message.querySelector(".stream-pre")?.textContent || "";
+
+    // Swap plain-text <pre> for fully rendered markdown — happens once, after streaming ends.
+    bubble.classList.remove("streaming");
+    bubble.innerHTML = renderMarkdown(raw);
+    enhanceCodeBlocks(bubble);
+    Prism.highlightAllUnder(bubble);
 }
 
 export function setStatus(label, busy = false) {
