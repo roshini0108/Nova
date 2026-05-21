@@ -1,682 +1,444 @@
-const MODEL = 'gemini-2.5-flash';
+import { completeRedirectSignIn, logout, signInWithGoogle, watchAuth } from "./modules/auth.js";
+import { streamChat } from "./modules/chat.js";
+import {
+    createChat,
+    deleteChat,
+    loadChats,
+    loadMessages,
+    renameChat,
+    saveMessage,
+    updateMessage
+} from "./modules/firestore.js";
+import {
+    activeChat,
+    messageHistoryForApi,
+    resetState,
+    setActiveChat,
+    state,
+    stopChatListener,
+    stopMessageListener,
+    truncate
+} from "./modules/sessions.js";
+import {
+    appendTypingMessage,
+    autoGrow,
+    clearMessages,
+    closeSidebar,
+    configureMarkdown,
+    els,
+    openSidebar,
+    renderChats,
+    renderMessages,
+    setAuthLoading,
+    setStatus,
+    showAuthScreen,
+    showChatApp,
+    stopStreamingMessage,
+    toast,
+    upsertStreamingMessage
+} from "./modules/ui.js";
 
-const STORAGE_KEYS = {
-    sessions: "gemini.assistant.sessions.v1",
-    activeSession: "gemini.assistant.activeSession.v1",
-    theme: "gemini.assistant.theme.v1"
-};
+const STREAM_SAVE_INTERVAL = 500;
 
-const SAMPLE_PROMPTS = [
-    {
-        title: "Plan a launch",
-        text: "Create a crisp product launch checklist for a small SaaS team."
-    },
-    {
-        title: "Explain code",
-        text: "Explain this JavaScript concept with a short example: closures."
-    },
-    {
-        title: "Write better",
-        text: "Rewrite this paragraph to sound clearer, warmer, and more concise."
-    },
-    {
-        title: "Think with me",
-        text: "Help me compare three approaches for building a personal knowledge base."
-    }
-];
+async function startChatForUser(user) {
+    stopChatListener();
+    stopMessageListener();
+    state.user = user;
+    showChatApp(user);
+    setStatus("Syncing", true);
 
-const state = {
-    sessions: [],
-    activeSessionId: null,
-    isGenerating: false,
-    recognition: null
-};
+    state.chatUnsubscribe = loadChats(user.uid, async chats => {
+        state.chats = chats;
 
-const els = {
-    shell: document.getElementById("shell"),
-    sidebar: document.getElementById("sidebar"),
-    sidebarBackdrop: document.getElementById("sidebarBackdrop"),
-    sidebarToggleBtn: document.getElementById("sidebarToggleBtn"),
-    closeSidebarBtn: document.getElementById("closeSidebarBtn"),
-    sessionList: document.getElementById("sessionList"),
-    newChatBtn: document.getElementById("newChatBtn"),
-    activeTitle: document.getElementById("activeTitle"),
-    messages: document.getElementById("messages"),
-    chatForm: document.getElementById("chatForm"),
-    promptInput: document.getElementById("promptInput"),
-    sendBtn: document.getElementById("sendBtn"),
-    micBtn: document.getElementById("micBtn"),
-    themeToggle: document.getElementById("themeToggle"),
-    connectionStatus: document.getElementById("connectionStatus")
-};
-
-const storage = {
-    loadSessions() {
-        try {
-            return JSON.parse(localStorage.getItem(STORAGE_KEYS.sessions)) || [];
-        } catch {
-            return [];
-        }
-    },
-    saveSessions() {
-        localStorage.setItem(STORAGE_KEYS.sessions, JSON.stringify(state.sessions));
-    },
-    loadActiveSessionId() {
-        return localStorage.getItem(STORAGE_KEYS.activeSession);
-    },
-    saveActiveSessionId() {
-        localStorage.setItem(STORAGE_KEYS.activeSession, state.activeSessionId);
-    },
-    loadTheme() {
-        return localStorage.getItem(STORAGE_KEYS.theme);
-    },
-    saveTheme(theme) {
-        localStorage.setItem(STORAGE_KEYS.theme, theme);
-    }
-};
-
-const utils = {
-    id(prefix = "id") {
-        return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
-    },
-    now() {
-        return new Date().toISOString();
-    },
-    get activeSession() {
-        return state.sessions.find(session => session.id === state.activeSessionId);
-    },
-    truncate(text, max = 44) {
-        const normalized = text.replace(/\s+/g, " ").trim();
-        return normalized.length > max ? `${normalized.slice(0, max - 3)}...` : normalized;
-    },
-    scrollToBottom() {
-        requestAnimationFrame(() => {
-            els.messages.scrollTo({ top: els.messages.scrollHeight, behavior: "smooth" });
-        });
-    },
-    setStatus(label, busy = false) {
-        els.connectionStatus.lastChild.textContent = ` ${label}`;
-        els.connectionStatus.classList.toggle("is-busy", busy);
-    },
-    toast(message) {
-        document.querySelector(".toast")?.remove();
-        const toast = document.createElement("div");
-        toast.className = "toast";
-        toast.textContent = message;
-        document.body.appendChild(toast);
-        setTimeout(() => toast.remove(), 2200);
-    }
-};
-
-const markdown = {
-    configure() {
-        marked.setOptions({
-            breaks: true,
-            gfm: true,
-            highlight(code, lang) {
-                const language = Prism.languages[lang] ? lang : "markup";
-                return Prism.highlight(code, Prism.languages[language], language);
+        if (!state.chats.length) {
+            try {
+                const chatId = await createChat(user.uid);
+                setActiveChat(chatId);
+                subscribeToMessages(chatId);
+            } catch (error) {
+                handleFirestoreError(error);
+                renderChats();
+                renderMessages();
             }
-        });
-    },
-    render(raw) {
-        const html = marked.parse(raw || "");
-        return DOMPurify.sanitize(html, {
-            USE_PROFILES: { html: true },
-            ADD_ATTR: ["target", "rel"]
-        });
-    }
-};
-
-const sessions = {
-    create(title = "New chat") {
-        const session = {
-            id: utils.id("chat"),
-            title,
-            createdAt: utils.now(),
-            updatedAt: utils.now(),
-            messages: []
-        };
-        state.sessions.unshift(session);
-        state.activeSessionId = session.id;
-        this.persist();
-        ui.renderAll();
-        return session;
-    },
-    delete(id) {
-        const session = state.sessions.find(item => item.id === id);
-        if (!session) return;
-
-        const confirmed = window.confirm(`Delete "${session.title}"?`);
-        if (!confirmed) return;
-
-        state.sessions = state.sessions.filter(item => item.id !== id);
-        if (!state.sessions.length) {
-            this.create();
-            return;
-        }
-        if (state.activeSessionId === id) {
-            state.activeSessionId = state.sessions[0].id;
-        }
-        this.persist();
-        ui.renderAll();
-    },
-    rename(id) {
-        const session = state.sessions.find(item => item.id === id);
-        if (!session) return;
-
-        const nextTitle = window.prompt("Rename chat", session.title)?.trim();
-        if (!nextTitle) return;
-        session.title = utils.truncate(nextTitle, 64);
-        session.updatedAt = utils.now();
-        this.persist();
-        ui.renderAll();
-    },
-    activate(id) {
-        if (state.activeSessionId === id) return;
-        state.activeSessionId = id;
-        this.persist();
-        ui.renderAll();
-        ui.closeSidebar();
-    },
-    addMessage(role, message) {
-        const session = utils.activeSession || this.create();
-        const entry = {
-            id: utils.id("msg"),
-            role,
-            message,
-            createdAt: utils.now()
-        };
-        session.messages.push(entry);
-        session.updatedAt = utils.now();
-
-        if (role === "user" && session.messages.filter(item => item.role === "user").length === 1) {
-            session.title = utils.truncate(message, 52) || "New chat";
-            els.activeTitle.textContent = session.title;
-        }
-
-        this.persist();
-        return entry;
-    },
-    updateMessage(id, message) {
-        const session = utils.activeSession;
-        const entry = session?.messages.find(item => item.id === id);
-        if (!entry) return;
-        entry.message = message;
-        session.updatedAt = utils.now();
-        this.persist();
-    },
-    removeMessage(id) {
-        const session = utils.activeSession;
-        if (!session) return;
-        session.messages = session.messages.filter(item => item.id !== id);
-        session.updatedAt = utils.now();
-        this.persist();
-    },
-    persist() {
-        storage.saveSessions();
-        storage.saveActiveSessionId();
-    }
-};
-
-const ui = {
-    renderAll() {
-        this.renderSessions();
-        this.renderMessages();
-    },
-    renderSessions() {
-        els.sessionList.innerHTML = "";
-        state.sessions.forEach(session => {
-            const row = document.createElement("button");
-            row.className = `session-row${session.id === state.activeSessionId ? " active" : ""}`;
-            row.type = "button";
-            row.dataset.sessionId = session.id;
-            row.setAttribute("aria-current", session.id === state.activeSessionId ? "page" : "false");
-            row.innerHTML = `
-                    <span class="session-title">${DOMPurify.sanitize(session.title)}</span>
-                    <span class="session-actions" aria-label="Chat actions">
-                    <span class="action-btn rename-session" role="button" tabindex="0" title="Rename">Edit</span>
-                    <span class="action-btn delete-session" role="button" tabindex="0" title="Delete">Del</span>
-                </span>
-            `;
-            els.sessionList.appendChild(row);
-        });
-    },
-    renderMessages() {
-        const session = utils.activeSession;
-        els.activeTitle.textContent = session?.title || "New chat";
-        els.messages.innerHTML = "";
-
-        if (!session || session.messages.length === 0) {
-            els.messages.appendChild(this.createWelcome());
             return;
         }
 
-        session.messages.forEach(message => {
-            els.messages.appendChild(this.createMessage(message));
-        });
-        Prism.highlightAllUnder(els.messages);
-        utils.scrollToBottom();
-    },
-    createWelcome() {
-        const welcome = document.createElement("div");
-        welcome.className = "welcome";
-        welcome.innerHTML = `
-            <div class="welcome-mark" aria-hidden="true">G</div>
-            <h2>How can I help today?</h2>
-            <p>Ask for strategy, code, writing, research, planning, or a second brain for a half-formed idea.</p>
-            <div class="prompt-grid">
-                ${SAMPLE_PROMPTS.map(prompt => `
-                    <button class="prompt-card" type="button" data-prompt="${DOMPurify.sanitize(prompt.text)}">
-                        <strong>${DOMPurify.sanitize(prompt.title)}</strong>
-                        <span>${DOMPurify.sanitize(prompt.text)}</span>
-                    </button>
-                `).join("")}
-            </div>
-        `;
-        return welcome;
-    },
-    createMessage(entry) {
-        const message = document.createElement("article");
-        message.className = `message ${entry.role}`;
-        message.dataset.messageId = entry.id;
-
-        const isUser = entry.role === "user";
-        const label = isUser ? "You" : "Gemini";
-        const actions = isUser ? "" : `
-            <div class="message-actions">
-                <button class="action-btn copy-message" type="button" title="Copy response" aria-label="Copy response">Copy</button>
-                <button class="action-btn speak-message" type="button" title="Read aloud" aria-label="Read response aloud">Play</button>
-                <button class="action-btn regenerate-message" type="button" title="Regenerate" aria-label="Regenerate response">Redo</button>
-            </div>
-        `;
-
-        message.innerHTML = `
-            <div class="avatar" aria-hidden="true">${isUser ? "U" : "G"}</div>
-            <div class="message-body">
-                <div class="message-head">
-                    <span>${label}</span>
-                    ${actions}
-                </div>
-                <div class="bubble">${isUser ? DOMPurify.sanitize(entry.message) : markdown.render(entry.message)}</div>
-            </div>
-        `;
-        return message;
-    },
-    createTypingMessage() {
-        const wrapper = document.createElement("article");
-        wrapper.className = "message assistant typing-message";
-        wrapper.innerHTML = `
-            <div class="avatar" aria-hidden="true">G</div>
-            <div class="message-body">
-                <div class="message-head"><span>Gemini</span></div>
-                <div class="bubble typing-bubble">
-                    <div class="typing-dots" aria-label="Gemini is typing">
-                        <span></span><span></span><span></span>
-                    </div>
-                    <div class="skeleton" aria-hidden="true">
-                        <div class="skeleton-line"></div>
-                        <div class="skeleton-line"></div>
-                        <div class="skeleton-line"></div>
-                    </div>
-                </div>
-            </div>
-        `;
-        return wrapper;
-    },
-    replaceTypingWithStream(entry) {
-        document.querySelector(".typing-message")?.remove();
-        const message = this.createMessage(entry);
-        const bubble = message.querySelector(".bubble");
-        bubble.classList.add("streaming");
-        els.messages.appendChild(message);
-        utils.scrollToBottom();
-        return bubble;
-    },
-    openSidebar() {
-        els.shell.classList.add("sidebar-open");
-        els.sidebarBackdrop.hidden = false;
-    },
-    closeSidebar() {
-        els.shell.classList.remove("sidebar-open");
-        els.sidebarBackdrop.hidden = true;
-    },
-    setTheme(theme) {
-        document.documentElement.dataset.theme = theme;
-        els.themeToggle.setAttribute("aria-pressed", String(theme === "dark"));
-        storage.saveTheme(theme);
-    },
-    autoGrow() {
-        els.promptInput.style.height = "auto";
-        els.promptInput.style.height = `${Math.min(els.promptInput.scrollHeight, 168)}px`;
-    }
-};
-
-const api = {
-    parseSseEvents(buffer) {
-        const normalized = buffer.replace(/\r\n/g, "\n");
-        const parts = normalized.split("\n\n");
-        return {
-            events: parts.slice(0, -1),
-            rest: parts.at(-1) || ""
-        };
-    },
-    parseEventData(event) {
-        return event
-            .split("\n")
-            .filter(line => line.startsWith("data:"))
-            .map(line => line.replace(/^data:\s*/, "").trim())
-            .filter(Boolean);
-    },
-    async streamChat(messages, callbacks) {
-        const response = await fetch('/api/chat/stream', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ messages })
-        });
-
-        if (!response.ok) {
-            const error = await response.json().catch(() => ({}));
-            throw new Error(error.message || `Request failed with HTTP ${response.status}`);
+        if (!state.activeChatId || !state.chats.some(chat => chat.id === state.activeChatId)) {
+            setActiveChat(state.chats[0].id);
+            subscribeToMessages(state.activeChatId);
         }
 
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = "";
-        let streamError = null;
+        renderChats();
+        setStatus("Ready", false);
+    }, error => {
+        handleFirestoreError(error);
+        renderChats();
+        renderMessages();
+        setStatus("Offline", false);
+    });
+}
 
-        const handlePayload = payload => {
-            if (payload === "[DONE]") {
-                callbacks.onDone?.();
-                return;
-            }
+function subscribeToMessages(chatId) {
+    stopMessageListener();
+    state.messages = [];
+    clearMessages();
 
-            const parsed = JSON.parse(payload);
-            if (parsed.type === "token") callbacks.onToken?.(parsed.text);
-            if (parsed.type === "error") {
-                streamError = new Error(parsed.message || "The server returned an unknown streaming error.");
-            }
-        };
+    if (!state.user || !chatId) return;
 
-        while (true) {
-            const { value, done } = await reader.read();
-            if (done) {
-                api.parseEventData(buffer.replace(/\r\n/g, "\n")).forEach(handlePayload);
-                break;
-            }
+    state.messageUnsubscribe = loadMessages(state.user.uid, chatId, messages => {
+        state.messages = messages;
+        renderMessages();
+    }, error => {
+        handleFirestoreError(error);
+    });
+}
 
-            buffer += decoder.decode(value, { stream: true });
-            const parsedBuffer = api.parseSseEvents(buffer);
-            buffer = parsedBuffer.rest;
-
-            parsedBuffer.events.forEach(event => {
-                api.parseEventData(event).forEach(handlePayload);
-            });
-
-            if (streamError) throw streamError;
-        }
-
-        if (streamError) throw streamError;
+async function createNewChat() {
+    if (!state.user || state.isGenerating) return;
+    try {
+        const chatId = await createChat(state.user.uid);
+        setActiveChat(chatId);
+        subscribeToMessages(chatId);
+        closeSidebar();
+    } catch (error) {
+        handleFirestoreError(error);
     }
-};
+}
 
-const chat = {
-    async send(text) {
-        const prompt = text.trim();
-        if (!prompt || state.isGenerating) return;
+async function sendPrompt(text) {
+    const prompt = text.trim();
+    if (!prompt || state.isGenerating) return;
+    if (!state.user) {
+        toast("Please sign in first.");
+        return;
+    }
 
-        state.isGenerating = true;
-        els.sendBtn.disabled = true;
-        utils.setStatus("Thinking", true);
+    state.isGenerating = true;
+    els.sendBtn.disabled = true;
+    setStatus("Thinking", true);
 
-        const userEntry = sessions.addMessage("user", prompt);
-        els.messages.querySelector(".welcome")?.remove();
-        els.messages.appendChild(ui.createMessage(userEntry));
-        els.messages.appendChild(ui.createTypingMessage());
-        ui.renderSessions();
-        utils.scrollToBottom();
+    let reply = "";
+    let lastSavedAt = 0;
+    let pendingSave = Promise.resolve();
+    let assistantMessageId = null;
+    let chatId = state.activeChatId;
+
+    try {
+        if (!chatId) {
+            chatId = await createChat(state.user.uid);
+            setActiveChat(chatId);
+            subscribeToMessages(chatId);
+        }
 
         els.promptInput.value = "";
-        ui.autoGrow();
+        autoGrow();
 
-        const assistantEntry = sessions.addMessage("assistant", "");
-        let reply = "";
-        let bubble = null;
+        const historyBeforeSend = messageHistoryForApi();
+        const isFirstUserMessage = state.messages.filter(message => message.role === "user").length === 0;
+        await saveMessage(state.user.uid, chatId, { role: "user", message: prompt });
 
-        try {
-            await api.streamChat(utils.activeSession.messages.filter(item => item.id !== assistantEntry.id), {
-                onToken: token => {
-                    if (!bubble) bubble = ui.replaceTypingWithStream(assistantEntry);
-                    reply += token;
-                    sessions.updateMessage(assistantEntry.id, reply);
-                    bubble.innerHTML = markdown.render(reply);
-                    Prism.highlightAllUnder(bubble);
-                    utils.scrollToBottom();
-                },
-                onError: message => {
-                    throw new Error(message);
-                }
-            });
-
-            if (!reply.trim()) throw new Error("Gemini returned an empty response.");
-            bubble?.classList.remove("streaming");
-        } catch (error) {
-            sessions.removeMessage(assistantEntry.id);
-            document.querySelector(".typing-message")?.remove();
-            this.showError(error.message);
-        } finally {
-            state.isGenerating = false;
-            els.sendBtn.disabled = false;
-            utils.setStatus("Ready", false);
-            ui.renderSessions();
-            els.promptInput.focus();
+        if (isFirstUserMessage) {
+            await renameChat(state.user.uid, chatId, truncate(prompt, 54));
         }
-    },
-    async regenerate(messageId) {
-        const session = utils.activeSession;
-        const index = session?.messages.findIndex(item => item.id === messageId);
-        if (!session || index < 0 || state.isGenerating) return;
 
-        const previousUser = [...session.messages.slice(0, index)].reverse().find(item => item.role === "user");
-        if (!previousUser) return;
+        assistantMessageId = await saveMessage(state.user.uid, chatId, { role: "assistant", message: "" });
+        const assistantEntry = { id: assistantMessageId, role: "assistant", message: "" };
+        appendTypingMessage();
 
-        session.messages = session.messages.slice(0, index);
-        sessions.persist();
-        ui.renderMessages();
-        const assistantEntry = sessions.addMessage("assistant", "");
-        let reply = "";
-        let bubble = null;
+        const history = [...historyBeforeSend, { role: "user", message: prompt }];
+        await streamChat(history, {
+            onToken: token => {
+                reply += token;
+                upsertStreamingMessage(assistantEntry, reply);
 
-        state.isGenerating = true;
-        els.sendBtn.disabled = true;
-        utils.setStatus("Thinking", true);
-        els.messages.appendChild(ui.createTypingMessage());
-        utils.scrollToBottom();
-
-        try {
-            await api.streamChat(session.messages.filter(item => item.id !== assistantEntry.id), {
-                onToken: token => {
-                    if (!bubble) bubble = ui.replaceTypingWithStream(assistantEntry);
-                    reply += token;
-                    sessions.updateMessage(assistantEntry.id, reply);
-                    bubble.innerHTML = markdown.render(reply);
-                    Prism.highlightAllUnder(bubble);
-                    utils.scrollToBottom();
-                },
-                onError: message => {
-                    throw new Error(message);
+                const now = Date.now();
+                if (now - lastSavedAt > STREAM_SAVE_INTERVAL) {
+                    lastSavedAt = now;
+                    const snapshot = reply;
+                    pendingSave = pendingSave.then(() => (
+                        updateMessage(state.user.uid, chatId, assistantMessageId, { message: snapshot })
+                    )).catch(error => {
+                        console.warn("Unable to persist streaming chunk", error);
+                    });
                 }
-            });
+            }
+        });
 
-            if (!reply.trim()) throw new Error("Gemini returned an empty response.");
-            bubble?.classList.remove("streaming");
-        } catch (error) {
-            sessions.removeMessage(assistantEntry.id);
-            document.querySelector(".typing-message")?.remove();
-            this.showError(error.message);
-        } finally {
-            state.isGenerating = false;
-            els.sendBtn.disabled = false;
-            utils.setStatus("Ready", false);
-            ui.renderSessions();
-            els.promptInput.focus();
+        if (!reply.trim()) throw new Error("Gemini returned an empty response.");
+        await pendingSave;
+        await updateMessage(state.user.uid, chatId, assistantMessageId, { message: reply });
+        stopStreamingMessage(assistantMessageId);
+    } catch (error) {
+        if (assistantMessageId) {
+            await updateMessage(state.user.uid, chatId, assistantMessageId, {
+                message: `**Something went wrong.**\n\n${error.message}`
+            }).catch(() => {});
         }
-    },
-    showError(message) {
-        const entry = {
-            id: utils.id("err"),
+        handleFirestoreError(error);
+    } finally {
+        state.isGenerating = false;
+        els.sendBtn.disabled = false;
+        setStatus("Ready", false);
+        els.promptInput.focus();
+    }
+}
+
+async function regenerate(messageId) {
+    if (!state.user || !state.activeChatId || state.isGenerating) return;
+    const index = state.messages.findIndex(message => message.id === messageId);
+    if (index < 0) return;
+
+    const previousMessages = state.messages.slice(0, index);
+    const lastUser = [...previousMessages].reverse().find(message => message.role === "user");
+    if (!lastUser) return;
+
+    state.isGenerating = true;
+    els.sendBtn.disabled = true;
+    setStatus("Regenerating", true);
+
+    let assistantMessageId = null;
+
+    let reply = "";
+    try {
+        assistantMessageId = await saveMessage(state.user.uid, state.activeChatId, {
             role: "assistant",
-            message: `**Something went wrong.**\n\n${message}`
-        };
-        els.messages.appendChild(ui.createMessage(entry));
-        utils.toast(message);
-        utils.scrollToBottom();
+            message: ""
+        });
+        const assistantEntry = { id: assistantMessageId, role: "assistant", message: "" };
+        appendTypingMessage();
+
+        await streamChat(previousMessages.map(({ role, message }) => ({ role, message })), {
+            onToken: async token => {
+                reply += token;
+                upsertStreamingMessage(assistantEntry, reply);
+            }
+        });
+        await updateMessage(state.user.uid, state.activeChatId, assistantMessageId, { message: reply });
+        stopStreamingMessage(assistantMessageId);
+    } catch (error) {
+        if (assistantMessageId) {
+            await updateMessage(state.user.uid, state.activeChatId, assistantMessageId, {
+                message: `**Something went wrong.**\n\n${error.message}`
+            }).catch(() => {});
+        }
+        handleFirestoreError(error);
+    } finally {
+        state.isGenerating = false;
+        els.sendBtn.disabled = false;
+        setStatus("Ready", false);
     }
-};
+}
 
-const speech = {
-    setup() {
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        if (!SpeechRecognition) {
-            els.micBtn.disabled = true;
-            els.micBtn.title = "Speech recognition is not supported in this browser";
-            return;
-        }
-
-        state.recognition = new SpeechRecognition();
-        state.recognition.continuous = false;
-        state.recognition.interimResults = true;
-        state.recognition.lang = navigator.language || "en-US";
-
-        state.recognition.onstart = () => {
-            els.micBtn.classList.add("is-listening");
-            utils.setStatus("Listening", true);
-        };
-        state.recognition.onend = () => {
-            els.micBtn.classList.remove("is-listening");
-            if (!state.isGenerating) utils.setStatus("Ready", false);
-        };
-        state.recognition.onresult = event => {
-            const transcript = Array.from(event.results)
-                .map(result => result[0].transcript)
-                .join("");
-            els.promptInput.value = transcript;
-            ui.autoGrow();
-        };
-        state.recognition.onerror = event => {
-            utils.toast(`Voice input stopped: ${event.error}`);
-        };
-    },
-    toggle() {
-        if (!state.recognition) return;
-        if (els.micBtn.classList.contains("is-listening")) {
-            state.recognition.stop();
-            return;
-        }
-        state.recognition.start();
-    },
-    speak(text) {
-        if (!("speechSynthesis" in window)) {
-            utils.toast("Text-to-speech is not supported in this browser.");
-            return;
-        }
-        speechSynthesis.cancel();
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.rate = 0.96;
-        speechSynthesis.speak(utterance);
+function setupSpeech() {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+        els.micBtn.disabled = true;
+        els.micBtn.title = "Speech recognition is not supported in this browser";
+        return;
     }
-};
+
+    state.recognition = new SpeechRecognition();
+    state.recognition.continuous = false;
+    state.recognition.interimResults = true;
+    state.recognition.lang = navigator.language || "en-US";
+
+    state.recognition.onstart = () => {
+        els.micBtn.classList.add("is-listening");
+        setStatus("Listening", true);
+    };
+    state.recognition.onend = () => {
+        els.micBtn.classList.remove("is-listening");
+        if (!state.isGenerating) setStatus("Ready", false);
+    };
+    state.recognition.onresult = event => {
+        els.promptInput.value = Array.from(event.results)
+            .map(result => result[0].transcript)
+            .join("");
+        autoGrow();
+    };
+    state.recognition.onerror = event => toast(`Voice input stopped: ${event.error}`);
+}
+
+function toggleSpeech() {
+    if (!state.recognition) return;
+    if (els.micBtn.classList.contains("is-listening")) {
+        state.recognition.stop();
+        return;
+    }
+    state.recognition.start();
+}
+
+function speak(text) {
+    if (!("speechSynthesis" in window)) {
+        toast("Text-to-speech is not supported in this browser.");
+        return;
+    }
+    speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = 0.96;
+    speechSynthesis.speak(utterance);
+}
 
 function bindEvents() {
-    els.chatForm.addEventListener("submit", event => {
-        event.preventDefault();
-        chat.send(els.promptInput.value);
+    els.googleLoginBtn.addEventListener("click", async () => {
+        try {
+            setAuthLoading("Signing in...", true);
+            const user = await signInWithGoogle();
+            if (!user) setAuthLoading("Redirecting to Google...", true);
+        } catch (error) {
+            console.error("Google sign-in failed", error);
+            const message = friendlyAuthError(error);
+            setAuthLoading(message, false);
+            toast(message);
+        }
     });
 
-    els.promptInput.addEventListener("input", ui.autoGrow);
+    els.logoutBtn.addEventListener("click", async () => {
+        try {
+            els.logoutBtn.disabled = true;
+            setStatus("Logging out", true);
+            await logout();
+        } catch (error) {
+            toast(error.message);
+        } finally {
+            els.logoutBtn.disabled = false;
+        }
+    });
+
+    els.chatForm.addEventListener("submit", event => {
+        event.preventDefault();
+        sendPrompt(els.promptInput.value);
+    });
+
+    els.promptInput.addEventListener("input", autoGrow);
     els.promptInput.addEventListener("keydown", event => {
         if (event.key === "Enter" && !event.shiftKey) {
             event.preventDefault();
-            chat.send(els.promptInput.value);
+            sendPrompt(els.promptInput.value);
         }
     });
 
-    els.newChatBtn.addEventListener("click", () => sessions.create());
-    els.sidebarToggleBtn.addEventListener("click", ui.openSidebar);
-    els.closeSidebarBtn.addEventListener("click", ui.closeSidebar);
-    els.sidebarBackdrop.addEventListener("click", ui.closeSidebar);
+    els.newChatBtn.addEventListener("click", createNewChat);
+    els.sidebarToggleBtn.addEventListener("click", openSidebar);
+    els.closeSidebarBtn.addEventListener("click", closeSidebar);
+    els.sidebarBackdrop.addEventListener("click", closeSidebar);
+    els.micBtn.addEventListener("click", toggleSpeech);
 
-    els.themeToggle.addEventListener("click", () => {
-        const nextTheme = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
-        ui.setTheme(nextTheme);
-    });
+    els.chatList.addEventListener("click", async event => {
+        const row = event.target.closest(".chat-row");
+        if (!row || !state.user) return;
+        const chatId = row.dataset.chatId;
 
-    els.micBtn.addEventListener("click", speech.toggle);
-
-    els.sessionList.addEventListener("click", event => {
-        const row = event.target.closest(".session-row");
-        if (!row) return;
-        const id = row.dataset.sessionId;
-        if (event.target.closest(".rename-session")) {
-            sessions.rename(id);
+        if (event.target.closest(".rename-chat")) {
+            const chat = state.chats.find(item => item.id === chatId);
+            const title = window.prompt("Rename chat", chat?.title || "New chat")?.trim();
+            if (title) {
+                await renameChat(state.user.uid, chatId, truncate(title, 72)).catch(handleFirestoreError);
+            }
             return;
         }
-        if (event.target.closest(".delete-session")) {
-            sessions.delete(id);
+
+        if (event.target.closest(".delete-chat")) {
+            const chat = state.chats.find(item => item.id === chatId);
+            if (window.confirm(`Delete "${chat?.title || "this chat"}"?`)) {
+                await deleteChat(state.user.uid, chatId).catch(handleFirestoreError);
+            }
             return;
         }
-        sessions.activate(id);
+
+        setActiveChat(chatId);
+        renderChats();
+        subscribeToMessages(chatId);
+        closeSidebar();
     });
 
     els.messages.addEventListener("click", async event => {
         const promptCard = event.target.closest(".prompt-card");
         if (promptCard) {
             els.promptInput.value = promptCard.dataset.prompt;
-            ui.autoGrow();
+            autoGrow();
             els.promptInput.focus();
             return;
         }
 
-        const message = event.target.closest(".message");
-        if (!message) return;
+        const copyCode = event.target.closest(".copy-code");
+        if (copyCode) {
+            const code = copyCode.closest("pre")?.querySelector("code")?.innerText || "";
+            await navigator.clipboard.writeText(code);
+            copyCode.textContent = "Copied";
+            setTimeout(() => { copyCode.textContent = "Copy"; }, 1200);
+            return;
+        }
 
-        const id = message.dataset.messageId;
-        const entry = utils.activeSession?.messages.find(item => item.id === id);
+        const messageNode = event.target.closest(".message");
+        if (!messageNode) return;
+        const entry = state.messages.find(message => message.id === messageNode.dataset.messageId);
         if (!entry) return;
 
         if (event.target.closest(".copy-message")) {
             await navigator.clipboard.writeText(entry.message);
-            utils.toast("Response copied");
+            toast("Response copied");
         }
-        if (event.target.closest(".speak-message")) {
-            speech.speak(entry.message);
-        }
-        if (event.target.closest(".regenerate-message")) {
-            chat.regenerate(id);
-        }
+        if (event.target.closest(".speak-message")) speak(entry.message);
+        if (event.target.closest(".regenerate-message")) regenerate(entry.id);
     });
 
-    window.addEventListener("resize", ui.autoGrow);
+    window.addEventListener("resize", autoGrow);
 }
 
-function boot() {
-    markdown.configure();
+function handleFirestoreError(error) {
+    console.error("Firestore operation failed", error);
+    const message = isPermissionError(error)
+        ? "Firestore rules are blocking this user. Deploy the included firestore.rules file."
+        : error?.message || "Something went wrong.";
+    toast(message);
+    setStatus(isPermissionError(error) ? "Rules blocked" : "Offline", false);
+}
 
-    const preferredTheme = storage.loadTheme()
-        || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
-    ui.setTheme(preferredTheme);
+function isPermissionError(error) {
+    return error?.code === "permission-denied" || /insufficient permissions/i.test(error?.message || "");
+}
 
-    state.sessions = storage.loadSessions();
-    const activeId = storage.loadActiveSessionId();
-    state.activeSessionId = state.sessions.some(session => session.id === activeId)
-        ? activeId
-        : state.sessions[0]?.id;
+function friendlyAuthError(error) {
+    const code = error?.code || "";
+    if (code === "auth/unauthorized-domain") {
+        return "Add localhost to Firebase authorized domains.";
+    }
+    if (code === "auth/popup-blocked") {
+        return "Popup was blocked. Allow popups and try again.";
+    }
+    if (code === "auth/popup-closed-by-user") {
+        return "Google sign-in was closed before finishing.";
+    }
+    if (code === "auth/operation-not-allowed") {
+        return "Enable Google sign-in in Firebase Authentication.";
+    }
+    return error?.message || "Sign-in failed. Try again.";
+}
 
-    if (!state.sessions.length) sessions.create();
-    ui.renderAll();
-    speech.setup();
+async function boot() {
+    configureMarkdown();
     bindEvents();
-    ui.autoGrow();
+    setupSpeech();
+    showAuthScreen("Checking auth...");
+
+    try {
+        await completeRedirectSignIn();
+    } catch (error) {
+        console.error("Redirect sign-in failed", error);
+        setAuthLoading(friendlyAuthError(error), false);
+    }
+
+    watchAuth(user => {
+        state.authReady = true;
+        if (!user) {
+            resetState();
+            renderChats();
+            showAuthScreen("Ready when you are.");
+            return;
+        }
+        startChatForUser(user);
+    });
 }
 
 boot();
