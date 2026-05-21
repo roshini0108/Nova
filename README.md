@@ -3,12 +3,11 @@
 <div align="center">
 
 ![Nova Chat Banner](https://img.shields.io/badge/Nova%20Chat-AI%20Powered-blueviolet?style=for-the-badge&logo=googlechrome&logoColor=white)
-![Status](https://img.shields.io/badge/Status-Production%20Ready-brightgreen?style=for-the-badge)
-![License](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)
+
 
 **A full-stack, real-time AI chatbot platform with Google Authentication, persistent chat history, and streaming responses — inspired by modern conversational AI experiences.**
 
-[Live Demo](#) · [Report Bug](#) · [Request Feature](#)
+[Live Demo](https://novachat0108.netlify.app/) · [Report Bug](mailto:roshiniimutyala@gmail.com) · [Request Feature](mailto:roshiniimutyala@gmail.com)
 
 </div>
 
