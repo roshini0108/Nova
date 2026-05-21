@@ -406,9 +406,12 @@ button:disabled {
 
 .chat-panel {
     display: flex;
-    min-width: 0;
     flex-direction: column;
-    height: 100dvh;
+
+    min-height: 100vh;
+    height: 100vh;
+
+    overflow: hidden;
 }
 
 .topbar {
@@ -507,14 +510,23 @@ h2 {
 }
 
 .messages {
-    display: flex;
-    min-height: 0;
+    max-width: 100%;
+    word-break: break-word;
+    overflow-wrap: break-word;
     flex: 1;
-    flex-direction: column;
-    gap: 22px;
     overflow-y: auto;
-    padding: 32px clamp(18px, 5vw, 64px) 28px;
+    overflow-x: hidden;
 
+    padding:
+        1.5rem clamp(1rem, 3vw, 2rem) 10rem;
+
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+
+    min-height: 0;
+
+    scroll-behavior: auto;
 }
 
 .messages::-webkit-scrollbar,
@@ -808,10 +820,15 @@ h2 {
 .composer {
     position: sticky;
     bottom: 0;
-    z-index: 12;
-    padding: 16px clamp(16px, 5vw, 64px) calc(16px + env(safe-area-inset-bottom));
-    border-top: 1px solid var(--border);
-    background: linear-gradient(180deg, transparent, rgba(8, 16, 31, .96) 18%);
+
+    width: 100%;
+    padding: 1rem 1.5rem calc(1rem + env(safe-area-inset-bottom));
+
+    background: rgba(8, 15, 35, 0.85);
+
+    backdrop-filter: blur(8px);
+
+    z-index: 20;
 }
 
 .composer-inner {
